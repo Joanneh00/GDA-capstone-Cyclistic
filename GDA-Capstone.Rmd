@@ -1,0 +1,384 @@
+---
+title: "GDAPC"
+author: "Yeoh Jo Ann"
+date: "2025-08-26"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(repos = c(CRAN = "https://cran.r-project.org/"))
+```
+
+```{r}
+install.packages("tidyverse")
+```
+
+```{r}
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+```
+
+# GDA - Capstone Project
+
+## Overview
+
+The director of marketing, Lily Moreno, believes the company's future success depends on maximizing the number of annual memberships. The team wants to understand how casual riders and annual members use Cyclistic bikes differently. And rather than creating a marketing campaign that target all-new customers, Moreno believes there is a solid opportunity to convert casual riders into members. The task assigned to you is **how do annual members and casual riders use Cyclistic bikes differently?"**
+
+### Business task
+
+Identify the differences in using Cyclistic bikes between casual riders and annual members, including the trend and the factor.
+
+```{r}
+df <- read.csv("Divvy_Trips_2019_Q1.csv")
+```
+
+## Prepare Data Set
+
+The dataset is a public data that people can use to explore how different custoemr types are suing Cyclistic bikes. Note: Cyclistic is a fictional company and the dataset is for the purposes of case study. The data has been made available by Motive International Inc. under this [license](https://divvybikes.com/data-license-agreement)
+
+The dataset was downloaded in csv file type and the initial exploration was taken to understand the basic structure and identify the possible errors using spreadsheet.
+
+Furthermore, the data set only contain the first quarter of year 2019 which is from 1 January 2019 until 31 March 2019.
+
+### Metadata
+
+The following table show the metadata for the data set.
+
+| Field | Data Type | Notes |
+|:---|----|----|
+| trip_id | number | The unique field for each record |
+| start_time | string | The start time for each trip (DD/MM/YYY HH:MM) |
+| end_time | string | The end time for each trip (DD/MM/YYY HH:MM) |
+| bikeid | number | The bike id for each trip |
+| tripduration | number | The time for each trip (in seconds) |
+| from_station_id | number | The station id the bike start from |
+| from_station_name | string | The station name the bike start from |
+| to_station_id | number | The station id the bike is returned |
+| to_station_name | string | The station name the bike is returned |
+| usertype | string | The user type (Subscriber/Customer) Customer: Non annual member, Subscriber: Annual member. |
+| gender | string | The user gender (Make/Female) |
+| birthyear | number | The user's birthyear |
+
+## Process Data Set
+
+In spreadsheet, the duplicate records issue, the missing value issue, and incorrect spelling issue were checked. There is no duplicated record, and incorrect spelling for each field. While for the *gender* and *birthyear* field, there are missing values.
+
+The csv file then was loaded into the R Studio Posit Cloud.
+
+```{r Read CSV file}
+df <- read.csv("Divvy_Trips_2019_Q1.csv")
+head(df)
+```
+
+The *gender* and *birthyear* fields were removed as both are not suitable for the business task.
+
+```{r Remove gender and birthyear fields}
+df_fil <- select(df,-c(gender,birthyear))
+head(df_fil, n = 10)
+```
+
+The *start_time* and *end_time* were corrected to the correct data type.
+
+```{r convert data type for start_time and end_time}
+df_fil$start_time <- dmy_hm(df_fil$start_time)
+df_fil$end_time <- dmy_hm(df_fil$end_time)
+```
+
+The new fields were created to extract the information for *start_time* and *end_time*.
+
+```{r hour and weekday}
+# start time
+df_fil$start_hour <- hour(df_fil$start_time)
+df_fil$start_weekday <- weekdays(df_fil$start_time)
+
+# end time
+df_fil$end_hour <- hour(df_fil$end_time)
+df_fil$end_weekday <- weekdays(df_fil$end_time)
+colnames(df_fil)
+```
+
+```{r}
+typeof(df_fil$start_time)
+```
+
+A new field which is named as *ride_length* was created to calculate the tripduration in minutes.
+
+```{r Create ride_length}
+df_fil$ride_length <- as.numeric(difftime(df_fil$end_time, df_fil$start_time, units = "mins"))
+head(df_fil$ride_length, n =10)
+```
+
+## Analyse
+
+### Basic information
+
+```{r}
+colnames(df_fil)
+```
+
+```{r}
+str(df_fil)
+```
+
+```{r}
+dim(df_fil)
+```
+
+From the above information, we noticed that the data set has a total **365096 records and 15 fields**.
+
+```{r Basic information for station}
+# How many start-station? 
+length(unique(df_fil$to_station_id))
+```
+
+```{r}
+length(unique(df_fil$from_station_id))
+```
+
+From the information above, there is at least 600 stations recorded in this data set.
+
+### Usertype Distribution
+
+A pie chart was created to understand the propotion of the subscribers and customers.
+
+```{r Usertypes Distribution Percentage}
+# User distribution percentage
+user_distribution <- table(df_fil$usertype)
+prop.table(user_distribution) * 100 
+```
+
+```{r}
+user_df <- data.frame(
+  usertype = names(user_distribution),
+  count = as.numeric(user_distribution)
+)
+user_df$percentage <- round(user_df$count/sum(user_df$count)*100, 1)
+
+ggplot(user_df, aes(x="", y=count, fill=usertype)) +
+  geom_bar(stat="identity", width=1) +
+  coord_polar("y", start=0) +
+  geom_text(aes(label=paste0(percentage,"%")), 
+            position=position_stack(vjust=0.5)) +
+  labs(title = "User Type Distribution") +
+  theme_void()
+```
+
+### Basic statistic for ride length
+
+```{r}
+df_user_sum <- aggregate(ride_length ~ usertype, df_fil, summary)
+mean_data <- data.frame(
+  usertype = df_user_sum$usertype,
+  mean_time = df_user_sum$ride_length[,"Mean"]
+)
+
+ggplot(mean_data, aes(x = usertype, y = mean_time)) +
+  geom_col(fill = c("lightblue", "lightgreen")) +
+  labs(title = "Mean Riding Length", x = "User Types", y = "Minutes")
+```
+
+```{r}
+# Comparison of mean and median
+compare_data <- data.frame(
+  usertype = rep(df_user_sum$usertype, 2),
+  measure = rep(c("mean", "median"), each = nrow(df_user_sum)),
+  time = c(df_user_sum$ride_length[,"Mean"], df_user_sum$ride_length[,"Median"])
+)
+
+ggplot(compare_data, aes(x = usertype, y = time, fill = measure)) +
+  geom_col(position = "dodge") +
+  labs(title = "Ride length comparison", x = "user type", y = "minutes")
+```
+
+```{r}
+# Box plot
+ggplot(df_fil, aes(x=usertype, y=ride_length, fill=usertype)) +
+  geom_boxplot() +
+  ylim(0, 60) +
+  labs(title="Trip Duration Comparison", 
+       x="User Type", y="Duration (minutes)")
+```
+
+### Frequency of bike riding for each day (start)
+
+```{r}
+hourly_usage <- df_fil %>% 
+  group_by(start_hour) %>% 
+  summarise(count = n())
+ggplot(data=hourly_usage) +geom_col((mapping = aes(x=start_hour, y=count)))
+```
+
+```{r}
+hourly_usage
+```
+
+```{r Subscribers hourly usage (start)}
+# Subscriber hourly usage (start)
+sub_hourly_usage <- df_fil %>% 
+  filter(usertype == "Subscriber") %>% 
+  group_by(start_hour) %>% 
+  summarise(count=n())
+ggplot(data=sub_hourly_usage) +geom_col((mapping = aes(x=start_hour, y=count)))+
+  labs(title = "Subscriber Start Riding Time Frequency")
+```
+
+```{r}
+sub_hourly_usage
+```
+
+```{r Customer hourly usage (start)}
+# Customer hourly usage (start)
+cus_hourly_usage <- df_fil %>% 
+  filter(usertype == "Customer") %>% 
+  group_by(start_hour) %>% 
+  summarise(count=n())
+ggplot(data=cus_hourly_usage) +geom_col((mapping = aes(x= start_hour, y=count)))+
+  labs(title= "Customer Start Riding Time Frequency")
+```
+
+```{r}
+# Regardless the usertype, what are the frequency of bike riding for each day (end)
+end_hourly_usage <- df_fil %>% 
+  group_by(end_hour) %>% 
+  summarise(count = n())
+ggplot(data=end_hourly_usage) +geom_col((mapping = aes(x=end_hour, y=count)))
+
+```
+
+```{r}
+# Subscriber hourly usage (end)
+end_sub_hourly_usage <- df_fil %>% 
+  filter(usertype == "Subscriber") %>% 
+  group_by(end_hour) %>% 
+  summarise(count=n())
+ggplot(data=end_sub_hourly_usage) +geom_col((mapping = aes(x=end_hour, y=count)))+
+  labs(title = "Subscriber End Riding Time Frequency")
+```
+
+```{r}
+# Customer hourly usage (end)
+end_cus_hourly_usage <- df_fil %>% 
+  filter(usertype == "Customer") %>% 
+  group_by(end_hour) %>% 
+  summarise(count=n())
+ggplot(data=end_cus_hourly_usage) +geom_col((mapping = aes(x=end_hour, y=count)))+
+  labs(title= "Customer End Riding Time Frequency")
+```
+
+### Frequency of bike riding for each week
+
+```{r}
+# Regardless usertype, what are the riding frequency for each day
+daily_usage <-df_fil %>% 
+  group_by(start_weekday) %>% 
+  summarise(count=n())
+ggplot(data=daily_usage) +geom_col((mapping = aes(x= start_weekday, y=count)))+
+  scale_x_discrete(limits = c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"))+
+  labs(title= "Daily Riding Frequency")
+```
+
+```{r}
+#  what are the riding frequency for each day for subscriber
+sub_daily_usage <-df_fil %>% 
+  filter (usertype == "Subscriber") %>% 
+  group_by(start_weekday) %>% 
+  summarise(count=n())
+ggplot(data=sub_daily_usage) +geom_col((mapping = aes(x= start_weekday, y=count)))+
+  scale_x_discrete(limits = c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"))+
+  labs(title= "Subscribers Daily Riding Frequency")
+```
+
+```{r}
+#  what are the riding frequency for each day for customer
+cus_daily_usage <-df_fil %>% 
+  filter (usertype == "Customer") %>% 
+  group_by(start_weekday) %>% 
+  summarise(count=n())
+ggplot(data=cus_daily_usage) +geom_col((mapping = aes(x= start_weekday, y=count)))+
+  scale_x_discrete(limits = c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"))+
+  labs(title= "Customers Daily Riding Frequency")
+```
+
+### Popularity of each station
+
+```{r top20 station regardless user types}
+top20_station_popularity <- df_fil %>% 
+  group_by(to_station_id, to_station_name) %>% 
+  summarise(count = n(), .groups = "drop") %>% 
+  arrange(desc(count)) %>% 
+  slice_head(n = 20)
+ggplot(data = top20_station_popularity) + 
+  geom_col(mapping = aes(x = reorder(to_station_name, count), y = count)) +
+  coord_flip() +
+  labs(title = "Top 20 Most Popular Stations", 
+       x = "Station Name", 
+       y = "Count") +
+  theme_minimal()
+```
+
+```{r Top20 station (Subscribers)}
+sub_top20_station_popularity <- df_fil %>% 
+  filter(usertype =="Subscriber") %>% 
+  group_by(to_station_id, to_station_name) %>% 
+  summarise(count = n(), .groups = "drop") %>% 
+  arrange(desc(count)) %>% 
+  slice_head(n = 20)
+ggplot(data = sub_top20_station_popularity) + 
+  geom_col(mapping = aes(x = reorder(to_station_name, count), y = count)) +
+  coord_flip() +  
+  labs(title = "Top 20 Most Popular Stations (Subscriber)", 
+       x = "Station Name", 
+       y = "Count") +
+  theme_minimal()
+```
+
+```{r top20 station customer}
+cus_top20_station_popularity <- df_fil %>% 
+  filter(usertype =="Customer") %>% 
+  group_by(to_station_id, to_station_name) %>% 
+  summarise(count = n(), .groups = "drop") %>% 
+  arrange(desc(count)) %>% 
+  slice_head(n = 20)
+ggplot(data = cus_top20_station_popularity) + 
+  geom_col(mapping = aes(x = reorder(to_station_name, count), y = count)) +
+  coord_flip() +  
+  labs(title = "Top 20 Most Popular Stations (Customer)", 
+       x = "Station Name", 
+       y = "Count") +
+  theme_minimal()
+```
+
+#### Discussion and Insights
+
+1.  Subscribers show more frequent usage on Cyclistic bike With 93.7% of ride records coming from Subscribers, this suggests that **Subscribers either represent the majority of users or use the service much more frequently than Customers**. The significant difference in ride volume indicates distinct usage patterns between these two user types.\
+    However, considering the data set limitation, a single quarter might provide incomplete information about the overall user distribution patterns.
+
+2.  The ride length data reveals interesting differences between user types. **Customers have significantly longer rides**, with a mean of 62 minutes compared to subscribers' 15 minutes. The median value also differ substantially: 22 minutes for customers versus 8 minutes for subscribers.\
+    **The larger gap between the mean and median for customers (62 vs 22 minutes) indicates the presence of some extremely long rides**, suggesting varied usage pattern. This could be due to several factors: recreational riding to multiple destination, difficulty locating return station, or simply forgetting to return the bike.\
+    **In contrast, subscribers show more consistent usage patterns,** with their mean and median values being relatively close (15 vs 8 minutes), indicating more predictable, likely commute-oriented trips.
+
+3.  The box plot reveals that **75% of subscribers have ride length under 14 minutes**, with **half of all subscribers riding for less than 8 minutes**. This pattern indicates that subscribers tend to use the service for **short-distance**, **point-to-point transportation**, likely for commuting.\
+    The **customer data shows 75% ride for less than 30 minutes and 50% for less than 20 minutes**. Customers not only **ride longer than subscribers but also show greater variability,** with an IQR of 17 minutes versus only 9 minutes for subscribers. **This suggests more diverse usage patterns among customers compared to the consistent short-trip behavior of subscribers.**
+
+4.  The end riding time patterns reveal distinct usage behaviors between user types. **Subscribers show clear commuting patterns with two prominent peaks: around 8 AM and 5 PM**, corresponding to typical work start and end times. The ridership gradually increases leading up to these peak hours and decreases afterward.\
+    **In contrast, customers show a single broad peak around 4-5 PM**, with ridership gradually building throughout the afternoon and evening hours. Notably, **customers show minimal morning activity compared to subscribers**.\
+    **This strongly suggests that subscribers primarily use the bikes for work commuting**, while **customers appear to use the service more for afternoon and evening recreational activities** rather than structured commute patterns
+
+5.  The daily riding frequency shows **clear behavioral differences** between user types.\
+    **Subscribers exhibit a typical weekday commuting pattern**, with consistently high usage from Tuesday to Friday (58k-65k rides) and **significantly lower weekend usage** (Sunday: 25k, Saturday: 28k). This suggests **subscribers primarily use bikes for work commuting**.\
+    **Customers show the opposite trend**, with **Saturday as the peak day** (6k rides) and Sunday also high (3.7k rides), while **weekday usage remains consistently low** (1.9k-2.7k rides). This indicates **customers are mainly recreational users** who ride during weekends for leisure activities.\
+    **These contrasting patterns confirm that subscribers are commuters while customers are leisure riders**, requiring different business strategies for each segment.
+
+### Summary
+
+In summary, the data clearly distinguishes two distinct user segments: Subscribers are regular commuters with predictable, short-duration trips during weekdays, while Customers are recreational users with longer, more variable rides concentrated on weekends.
+
+## Recommendations
+
+1.  Ensure the subscribers have adequate bikes to use during commute.
+2.  Study weekend customer behavior patterns to understand their transportation needs and preferences.
+3.  Collect more data for different seasons and the user demographic.
